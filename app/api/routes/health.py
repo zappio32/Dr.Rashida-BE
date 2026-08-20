@@ -1,0 +1,22 @@
+from fastapi import APIRouter, Response, status
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+from fastapi import Depends
+
+from app.core.config import get_settings
+from app.db.session import get_db
+from app.schemas.health import HealthResponse
+
+router = APIRouter(prefix="/api/health", tags=["health"])
+
+
+@router.get("", response_model=HealthResponse)
+def health_check(response: Response, db: Session = Depends(get_db)) -> HealthResponse:
+    settings = get_settings()
+    try:
+        db.execute(text("SELECT 1"))
+        return HealthResponse(status="ok", ok=True, database="connected", environment=settings.NODE_ENV)
+    except Exception as error:  # noqa: BLE001
+        print(f"[health] check failed: {error}")
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return HealthResponse(status="error", ok=False, database="unavailable")
