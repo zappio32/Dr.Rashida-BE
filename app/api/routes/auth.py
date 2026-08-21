@@ -31,6 +31,7 @@ def _set_session_cookie(response: Response, *, user_id: str, role: str, name: st
         secure=is_production,
         samesite="none" if is_production else "lax",
         path="/",
+        domain=settings.COOKIE_DOMAIN or None,
         max_age=SESSION_MAX_AGE_SECONDS,
     )
 
@@ -80,7 +81,8 @@ def register(payload: RegisterRequest, response: Response, db: Session = Depends
 
 @router.post("/logout")
 def logout(response: Response) -> dict:
-    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    settings = get_settings()
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/", domain=settings.COOKIE_DOMAIN or None)
     return {"ok": True}
 
 

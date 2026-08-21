@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     AUTH_SECRET: str = ""
     CLINIC_TIMEZONE: str = "Asia/Kolkata"
     CORS_ORIGINS: str = "http://localhost:3000"
+    COOKIE_DOMAIN: str = ""
     PAYMENT_REQUIRED: bool = False
     PAYMENT_PROVIDER: str = "configured-provider"
     PAYMENT_WEBHOOK_SECRET: str | None = None
