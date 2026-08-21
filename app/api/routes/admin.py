@@ -1,17 +1,31 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.dependencies import require_role
 from app.db.session import get_db
 from app.models.appointment import Appointment
+from app.models.enums import Role
 from app.models.misc import AuditLog
+from app.models.notification import Notification
 from app.models.service import Service
+from app.models.user import User
 from app.schemas.appointment import AppointmentOut, ServiceCreateRequest, ServiceOut
 from app.schemas.auth import SessionUser
 from app.utils.ids import new_id
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+@router.get("/dashboard-summary", response_model=dict)
+def read_dashboard_summary(
+    session: SessionUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> dict:
+    patients_count = db.execute(select(func.count()).select_from(User).where(User.role == Role.PATIENT)).scalar_one()
+    services_count = db.execute(select(func.count()).select_from(Service).where(Service.active.is_(True))).scalar_one()
+    notifications_count = db.execute(select(func.count()).select_from(Notification)).scalar_one()
+    return {"patientsCount": patients_count, "servicesCount": services_count, "notificationsCount": notifications_count}
 
 
 @router.get("/appointments", response_model=dict)
