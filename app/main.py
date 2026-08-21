@@ -8,9 +8,14 @@ settings = get_settings()
 
 app = FastAPI(title="Dr. Rashida Ahmad API", version="1.0.0")
 
+allow_origins = settings.cors_origins_list
+if "*" in allow_origins:
+    # Wildcard origins cannot be combined with cookie-based auth.
+    raise RuntimeError("CORS_ORIGINS must list explicit origins; '*' is not allowed with credentialed requests.")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

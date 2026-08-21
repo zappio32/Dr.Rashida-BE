@@ -53,7 +53,10 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> list[str]:
-        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+        origins = [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+        if self.APP_URL and self.APP_URL not in origins:
+            origins.append(self.APP_URL)
+        return list(dict.fromkeys(origins))
 
     @property
     def sqlalchemy_database_url(self) -> str:

@@ -65,8 +65,10 @@ Never run `alembic downgrade` or drop tables against production without a review
 
 ## Deployment (Railway)
 
-- Build: `pip install -r requirements.txt`
-- Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Build: Dockerfile (`pip install -r requirements.txt`)
+- Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT` (defaults to 8080 when `PORT` is unset)
+- Public domain: `https://api.rashida.zadcart.com` (custom domain on the backend service)
+- Internal domain `drrashida-be.railway.internal` is for Railway-to-Railway calls only; never use it in browser code.
 - Set `DATABASE_URL` from Railway's Postgres plugin reference (do not hardcode credentials).
 - Set `CORS_ORIGINS` to the deployed frontend's origin(s), comma-separated.
 
