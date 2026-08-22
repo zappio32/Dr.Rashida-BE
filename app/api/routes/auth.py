@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.dependencies import get_current_session
@@ -37,9 +37,10 @@ def _set_session_cookie(response: Response, *, user_id: str, role: str, name: st
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> LoginResponse:
+async def login(payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)) -> LoginResponse:
     try:
-        user = db.execute(select(User).where(User.email == payload.email.lower())).scalar_one_or_none()
+        result = await db.execute(select(User).where(User.email == payload.email.lower()))
+        user = result.scalar_one_or_none()
         if not user or not user.isActive or not verify_password(payload.password, user.passwordHash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
         _set_session_cookie(response, user_id=user.id, role=user.role.value, name=user.name, email=user.email)
@@ -52,9 +53,10 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, response: Response, db: Session = Depends(get_db)) -> RegisterResponse:
+async def register(payload: RegisterRequest, response: Response, db: AsyncSession = Depends(get_db)) -> RegisterResponse:
     try:
-        existing = db.execute(select(User).where(User.email == payload.email.lower())).scalar_one_or_none()
+        result = await db.execute(select(User).where(User.email == payload.email.lower()))
+        existing = result.scalar_one_or_none()
         if existing:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with that email already exists.")
         user = User(
@@ -65,27 +67,27 @@ def register(payload: RegisterRequest, response: Response, db: Session = Depends
             role=Role.PATIENT,
         )
         db.add(user)
-        db.flush()
+        await db.flush()
         db.add(PatientProfile(id=new_id(), userId=user.id))
-        db.commit()
+        await db.commit()
         _set_session_cookie(response, user_id=user.id, role=user.role.value, name=user.name, email=user.email)
         return RegisterResponse(ok=True)
     except HTTPException:
-        db.rollback()
+        await db.rollback()
         raise
     except Exception as error:  # noqa: BLE001
-        db.rollback()
+        await db.rollback()
         print(f"[auth/register] request failed: {error}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to create account.") from error
 
 
 @router.post("/logout")
-def logout(response: Response) -> dict:
+async def logout(response: Response) -> dict:
     settings = get_settings()
     response.delete_cookie(SESSION_COOKIE_NAME, path="/", domain=settings.COOKIE_DOMAIN or None)
     return {"ok": True}
 
 
 @router.get("/session", response_model=SessionUser)
-def read_session(session: SessionUser = Depends(get_current_session)) -> SessionUser:
+async def read_session(session: SessionUser = Depends(get_current_session)) -> SessionUser:
     return session

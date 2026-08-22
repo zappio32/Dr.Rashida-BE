@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.core.dependencies import get_current_session
 from app.db.session import get_db
@@ -20,15 +21,15 @@ router = APIRouter(prefix="/api/appointments", tags=["appointments"])
 
 
 @router.post("", response_model=AppointmentCreateResponse)
-def book_appointment(
+async def book_appointment(
     payload: AppointmentCreateRequest,
     session: SessionUser = Depends(get_current_session),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> AppointmentCreateResponse:
     if session.role != "PATIENT":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="You must be signed in as a patient to book.")
     try:
-        appointment = create_appointment(
+        appointment = await create_appointment(
             db,
             patient_id=session.userId,
             service_id=payload.serviceId,
@@ -51,9 +52,9 @@ def book_appointment(
 
 
 @router.get("", response_model=dict)
-def list_appointments(
+async def list_appointments(
     session: SessionUser = Depends(get_current_session),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     query = select(Appointment).options(joinedload(Appointment.service), joinedload(Appointment.patient))
     if session.role == "PATIENT":
@@ -61,18 +62,19 @@ def list_appointments(
     elif session.role == "DOCTOR":
         query = query.where(Appointment.doctorId == session.userId)
     query = query.order_by(Appointment.startsAt.desc())
-    appointments = db.execute(query).unique().scalars().all()
+    result = await db.execute(query)
+    appointments = result.unique().scalars().all()
     return {"appointments": [AppointmentOut.model_validate(item).model_dump(mode="json") for item in appointments]}
 
 
 @router.patch("/{appointment_id}", response_model=dict)
-def update_appointment(
+async def update_appointment(
     appointment_id: str,
     payload: AppointmentUpdateRequest,
     session: SessionUser = Depends(get_current_session),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
-    appointment = db.get(Appointment, appointment_id)
+    appointment = await db.get(Appointment, appointment_id)
     if not appointment:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to access this information.")
     if (session.role == "PATIENT" and appointment.patientId != session.userId) or (
@@ -93,17 +95,19 @@ def update_appointment(
                     changedById=session.userId,
                 )
             )
-            db.query(ReminderJob).filter(
-                ReminderJob.appointmentId == appointment_id, ReminderJob.status == NotificationStatus.QUEUED
-            ).update({"status": NotificationStatus.FAILED})
-            db.commit()
-            db.refresh(appointment)
+            await db.execute(
+                update(ReminderJob)
+                .where(ReminderJob.appointmentId == appointment_id, ReminderJob.status == NotificationStatus.QUEUED)
+                .values(status=NotificationStatus.FAILED)
+            )
+            await db.commit()
+            await db.refresh(appointment)
             return {"appointment": AppointmentOut.model_validate(appointment).model_dump(mode="json")}
 
         if not payload.localDate or not payload.localTime:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A new date and time are required.")
 
-        conflict = db.execute(
+        result = await db.execute(
             select(Appointment).where(
                 Appointment.doctorId == appointment.doctorId,
                 Appointment.localDate == payload.localDate,
@@ -111,7 +115,8 @@ def update_appointment(
                 Appointment.status.notin_([AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW]),
                 Appointment.id != appointment_id,
             )
-        ).scalar_one_or_none()
+        )
+        conflict = result.scalar_one_or_none()
         if conflict:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That appointment slot is no longer available.")
 
@@ -128,12 +133,12 @@ def update_appointment(
                 changedById=session.userId,
             )
         )
-        db.commit()
-        db.refresh(appointment)
+        await db.commit()
+        await db.refresh(appointment)
         return {"appointment": AppointmentOut.model_validate(appointment).model_dump(mode="json")}
     except HTTPException:
-        db.rollback()
+        await db.rollback()
         raise
     except Exception as error:  # noqa: BLE001
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to update appointment.") from error

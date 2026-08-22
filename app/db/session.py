@@ -1,13 +1,15 @@
-from collections.abc import Generator
+"""Async dependency: yields an AsyncSession per request."""
+from collections.abc import AsyncGenerator
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import SessionLocal
+from app.db.database import get_async_sessionmaker
 
 
-def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with get_async_sessionmaker()() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise

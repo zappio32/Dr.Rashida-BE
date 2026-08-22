@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import text
-from sqlalchemy.orm import Session
-from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.session import get_db
@@ -11,10 +10,10 @@ router = APIRouter(prefix="/api/health", tags=["health"])
 
 
 @router.get("", response_model=HealthResponse)
-def health_check(response: Response, db: Session = Depends(get_db)) -> HealthResponse:
+async def health_check(response: Response, db: AsyncSession = Depends(get_db)) -> HealthResponse:
     settings = get_settings()
     try:
-        db.execute(text("SELECT 1"))
+        await db.execute(text("SELECT 1"))
         return HealthResponse(status="ok", ok=True, database="connected", environment=settings.NODE_ENV)
     except Exception as error:  # noqa: BLE001
         print(f"[health] check failed: {error}")

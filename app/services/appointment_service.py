@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.appointment import Appointment, AppointmentStatusHistory
@@ -27,8 +27,8 @@ class DoctorNotConfiguredError(Exception):
     pass
 
 
-def create_appointment(
-    db: Session,
+async def create_appointment(
+    db: AsyncSession,
     *,
     patient_id: str,
     service_id: str,
@@ -39,15 +39,15 @@ def create_appointment(
     notes: str | None,
 ) -> Appointment:
     settings = get_settings()
-    doctor_profile = db.execute(select(DoctorProfile).limit(1)).scalar_one_or_none()
+    doctor_profile = (await db.execute(select(DoctorProfile).limit(1))).scalar_one_or_none()
     if not doctor_profile:
         raise DoctorNotConfiguredError()
 
-    slots = get_available_slots(db, local_date, service_id)
+    slots = await get_available_slots(db, local_date, service_id)
     if local_time not in slots:
         raise SlotUnavailableError()
 
-    service = db.get(Service, service_id)
+    service = await db.get(Service, service_id)
     if not service:
         raise SlotUnavailableError()
 
@@ -78,7 +78,7 @@ def create_appointment(
             paymentStatus=payment_status,
         )
         db.add(appointment)
-        db.flush()
+        await db.flush()
 
         db.add(
             AppointmentStatusHistory(
@@ -142,10 +142,10 @@ def create_appointment(
             )
         )
 
-        db.commit()
-        db.refresh(appointment)
+        await db.commit()
+        await db.refresh(appointment)
         return appointment
     except IntegrityError as error:
-        db.rollback()
+        await db.rollback()
         print(f"[appointments] integrity error: {error}")
         raise SlotUnavailableError()
