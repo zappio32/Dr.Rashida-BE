@@ -421,7 +421,7 @@ async def delete_doctor(
             detail="This doctor has existing appointments and cannot be deleted. Deactivate the doctor instead.",
         )
 
-    await db.delete(profile)
+    await db.delete(user)  # cascades to DoctorProfile (ondelete=CASCADE) — avoids orphaning the login account
     db.add(AuditLog(id=new_id(), userId=session.userId, action="DOCTOR_DELETED", entity="DoctorProfile", entityId=doctor_id))
     await db.commit()
     return {"ok": True}
