@@ -29,6 +29,7 @@ class Appointment(Base):
     doctorId: Mapped[str] = mapped_column(String, ForeignKey("User.id"), nullable=False)
     patientId: Mapped[str] = mapped_column(String, ForeignKey("User.id"), nullable=False)
     serviceId: Mapped[str] = mapped_column(String, ForeignKey("Service.id"), nullable=False)
+    departmentId: Mapped[str | None] = mapped_column(String, ForeignKey("Department.id", ondelete="SET NULL"), nullable=True)
     consultationType: Mapped[str] = mapped_column(String, nullable=False)
     localDate: Mapped[str] = mapped_column(String, nullable=False)
     localTime: Mapped[str] = mapped_column(String, nullable=False)
@@ -46,6 +47,7 @@ class Appointment(Base):
     doctor: Mapped["User"] = relationship(foreign_keys=[doctorId])
     patient: Mapped["User"] = relationship(foreign_keys=[patientId])
     service: Mapped["Service"] = relationship()
+    department: Mapped["Department | None"] = relationship()
     statusHistory: Mapped[list["AppointmentStatusHistory"]] = relationship(back_populates="appointment")
     payment: Mapped["Payment | None"] = relationship(back_populates="appointment", uselist=False)
 

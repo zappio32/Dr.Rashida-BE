@@ -13,7 +13,7 @@ from app.models.notification import Notification, ReminderJob
 from app.models.misc import AuditLog
 from app.models.payment import Payment
 from app.models.service import Service
-from app.models.user import DoctorProfile
+from app.models.user import DoctorProfile, User
 from app.services.availability_service import get_available_slots
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -24,6 +24,18 @@ class SlotUnavailableError(Exception):
 
 
 class DoctorNotConfiguredError(Exception):
+    pass
+
+
+class DoctorNotFoundError(Exception):
+    pass
+
+
+class DoctorInactiveError(Exception):
+    pass
+
+
+class DepartmentMismatchError(Exception):
     pass
 
 
@@ -40,6 +52,8 @@ async def create_appointment(
     *,
     patient_id: str,
     service_id: str,
+    doctor_id: str | None,
+    department_id: str | None,
     consultation_type: str,
     local_date: str,
     local_time: str,
@@ -47,9 +61,23 @@ async def create_appointment(
     notes: str | None,
 ) -> Appointment:
     settings = get_settings()
-    doctor_profile = (await db.execute(select(DoctorProfile).limit(1))).scalar_one_or_none()
-    if not doctor_profile:
-        raise DoctorNotConfiguredError()
+    if doctor_id:
+        row = (
+            await db.execute(
+                select(DoctorProfile, User).join(User, User.id == DoctorProfile.userId).where(DoctorProfile.userId == doctor_id)
+            )
+        ).one_or_none()
+        if not row:
+            raise DoctorNotFoundError()
+        doctor_profile, doctor_user = row
+        if not doctor_user.isActive:
+            raise DoctorInactiveError()
+        if department_id and doctor_profile.departmentId != department_id:
+            raise DepartmentMismatchError()
+    else:
+        doctor_profile = (await db.execute(select(DoctorProfile).limit(1))).scalar_one_or_none()
+        if not doctor_profile:
+            raise DoctorNotConfiguredError()
 
     service = await db.get(Service, service_id)
     if not service:
@@ -57,7 +85,7 @@ async def create_appointment(
     if not service.active:
         raise ServiceInactiveError()
 
-    slots = await get_available_slots(db, local_date, service_id)
+    slots = await get_available_slots(db, local_date, service_id, doctor_profile.userId)
     if local_time not in slots:
         raise SlotUnavailableError()
 
@@ -76,6 +104,7 @@ async def create_appointment(
             doctorId=doctor_profile.userId,
             patientId=patient_id,
             serviceId=service.id,
+            departmentId=department_id or doctor_profile.departmentId,
             consultationType=consultation_type,
             localDate=local_date,
             localTime=local_time,

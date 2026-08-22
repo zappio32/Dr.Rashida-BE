@@ -13,8 +13,9 @@ router = APIRouter(prefix="/api/availability", tags=["availability"])
 async def read_availability(
     date: str = Query(...),
     serviceId: str = Query(...),
+    doctorId: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> AvailabilityResponse:
     settings = get_settings()
-    slots = await get_available_slots(db, date, serviceId)
+    slots = await get_available_slots(db, date, serviceId, doctorId)
     return AvailabilityResponse(slots=slots, timezone=settings.CLINIC_TIMEZONE)

@@ -43,6 +43,8 @@ class PatientSummary(BaseModel):
 
 class AppointmentCreateRequest(BaseModel):
     serviceId: str = Field(min_length=1)
+    doctorId: str | None = Field(default=None, min_length=1)
+    departmentId: str | None = Field(default=None, min_length=1)
     consultationType: Literal["ONLINE", "CLINIC"]
     localDate: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     localTime: str = Field(pattern=r"^\d{2}:\d{2}$")
@@ -69,6 +71,7 @@ class AppointmentOut(BaseModel):
     doctorId: str
     patientId: str
     serviceId: str
+    departmentId: str | None = None
     consultationType: str
     localDate: str
     localTime: str

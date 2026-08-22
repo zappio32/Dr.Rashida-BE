@@ -1,5 +1,6 @@
 from app.models.appointment import Appointment, AppointmentStatusHistory
 from app.models.availability import AvailabilityRule, BlockedSlot, Holiday
+from app.models.department import Department
 from app.models.document import ConsultationNote, MedicalDocument, Prescription
 from app.models.misc import AuditLog, ContactEnquiry, SystemSetting
 from app.models.notification import Notification, NotificationLog, ReminderJob
@@ -11,6 +12,7 @@ __all__ = [
     "User",
     "PatientProfile",
     "DoctorProfile",
+    "Department",
     "Service",
     "AvailabilityRule",
     "Holiday",

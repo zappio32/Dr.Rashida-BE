@@ -24,6 +24,7 @@ from app.core.config import get_settings
 from app.core.security import hash_password
 from app.db.database import Base
 from app.models.availability import AvailabilityRule
+from app.models.department import Department
 from app.models.enums import Role
 from app.models.user import DoctorProfile, PatientProfile, User
 from app.utils.ids import new_id
@@ -78,6 +79,7 @@ def clear_all_tables(session) -> None:
         "DoctorProfile",
         "PatientProfile",
         "User",
+        "Department",
     ]
     for table in tables_in_order:
         try:
@@ -93,6 +95,10 @@ def seed_users(session) -> None:
     print("🌱  Creating seed users …")
     pw_hash = hash_password(PASSWORD)
     doctor_profile_id = None
+
+    department = Department(id=new_id(), name="General Medicine", description="General physician consultations", active=True)
+    session.add(department)
+    session.flush()
 
     for data in SEED_USERS:
         user_id = new_id()
@@ -116,6 +122,7 @@ def seed_users(session) -> None:
                 DoctorProfile(
                     id=doctor_profile_id,
                     userId=user_id,
+                    departmentId=department.id,
                     displayName=data["name"],
                     qualification="MBBS, MD",
                     specialization="General Physician",

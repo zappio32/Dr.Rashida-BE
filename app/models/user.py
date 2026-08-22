@@ -48,6 +48,7 @@ class DoctorProfile(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
     userId: Mapped[str] = mapped_column(String, ForeignKey("User.id", ondelete="CASCADE"), unique=True, nullable=False)
+    departmentId: Mapped[str | None] = mapped_column(String, ForeignKey("Department.id", ondelete="SET NULL"), nullable=True)
     displayName: Mapped[str] = mapped_column(String, nullable=False)
     qualification: Mapped[str | None] = mapped_column(String, nullable=True)
     specialization: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -62,6 +63,7 @@ class DoctorProfile(Base):
     updatedAt: Mapped[datetime] = mapped_column(DateTime(), default=func.now(), onupdate=func.now())
 
     user: Mapped["User"] = relationship(back_populates="doctorProfile")
+    department: Mapped["Department | None"] = relationship(back_populates="doctors")
     availabilityRules: Mapped[list["AvailabilityRule"]] = relationship(back_populates="doctor")
     holidays: Mapped[list["Holiday"]] = relationship(back_populates="doctor")
     blockedSlots: Mapped[list["BlockedSlot"]] = relationship(back_populates="doctor")

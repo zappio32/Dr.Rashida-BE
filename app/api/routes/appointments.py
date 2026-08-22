@@ -16,7 +16,10 @@ from app.schemas.appointment import (
 )
 from app.schemas.auth import SessionUser
 from app.services.appointment_service import (
+    DepartmentMismatchError,
+    DoctorInactiveError,
     DoctorNotConfiguredError,
+    DoctorNotFoundError,
     ServiceInactiveError,
     ServiceNotFoundError,
     SlotUnavailableError,
@@ -39,6 +42,8 @@ async def book_appointment(
             db,
             patient_id=session.userId,
             service_id=payload.serviceId,
+            doctor_id=payload.doctorId,
+            department_id=payload.departmentId,
             consultation_type=payload.consultationType,
             local_date=payload.localDate,
             local_time=payload.localTime,
@@ -50,6 +55,14 @@ async def book_appointment(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Sorry, this appointment slot was just booked by another patient. Please select another available time.",
+        ) from error
+    except DoctorNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected doctor was not found.") from error
+    except DoctorInactiveError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected doctor is not currently available.") from error
+    except DepartmentMismatchError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Selected doctor does not belong to the selected department."
         ) from error
     except ServiceNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected consultation service was not found.") from error

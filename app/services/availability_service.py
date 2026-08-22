@@ -8,7 +8,7 @@ from app.models.appointment import Appointment
 from app.models.availability import AvailabilityRule, BlockedSlot, Holiday
 from app.models.enums import AppointmentStatus
 from app.models.service import Service
-from app.models.user import DoctorProfile
+from app.models.user import DoctorProfile, User
 
 logger = logging.getLogger(__name__)
 
@@ -25,16 +25,27 @@ def _clock(value: int) -> str:
     return f"{value // 60:02d}:{value % 60:02d}"
 
 
-async def get_available_slots(db: AsyncSession, local_date: str, service_id: str) -> list[str]:
+async def get_available_slots(
+    db: AsyncSession, local_date: str, service_id: str, doctor_id: str | None = None
+) -> list[str]:
     try:
         parsed_date = datetime.strptime(local_date, "%Y-%m-%d").date()
     except ValueError:
         logger.warning("availability: invalid date format requested date=%r", local_date)
         return []
 
-    doctor = (await db.execute(select(DoctorProfile).limit(1))).scalar_one_or_none()
+    if doctor_id:
+        doctor = (
+            await db.execute(
+                select(DoctorProfile)
+                .join(User, User.id == DoctorProfile.userId)
+                .where(DoctorProfile.userId == doctor_id, User.isActive.is_(True))
+            )
+        ).scalar_one_or_none()
+    else:
+        doctor = (await db.execute(select(DoctorProfile).limit(1))).scalar_one_or_none()
     if not doctor:
-        logger.warning("availability: no doctor profile configured")
+        logger.warning("availability: no active doctor profile found doctorId=%s", doctor_id)
         return []
 
     day_start = datetime.combine(parsed_date, datetime.min.time())
