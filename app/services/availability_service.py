@@ -1,5 +1,5 @@
-from datetime import date as date_cls
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,11 @@ from app.models.availability import AvailabilityRule, BlockedSlot, Holiday
 from app.models.enums import AppointmentStatus
 from app.models.service import Service
 from app.models.user import DoctorProfile
+
+logger = logging.getLogger(__name__)
+
+# Statuses that should NOT block a slot from being offered again.
+NON_BLOCKING_STATUSES = (AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW)
 
 
 def _minutes(value: str) -> int:
@@ -21,16 +26,27 @@ def _clock(value: int) -> str:
 
 
 async def get_available_slots(db: AsyncSession, local_date: str, service_id: str) -> list[str]:
-    doctor = (await db.execute(select(DoctorProfile).limit(1))).scalar_one_or_none()
-    if not doctor:
+    try:
+        parsed_date = datetime.strptime(local_date, "%Y-%m-%d").date()
+    except ValueError:
+        logger.warning("availability: invalid date format requested date=%r", local_date)
         return []
 
-    parsed_date = datetime.strptime(local_date, "%Y-%m-%d").date()
+    doctor = (await db.execute(select(DoctorProfile).limit(1))).scalar_one_or_none()
+    if not doctor:
+        logger.warning("availability: no doctor profile configured")
+        return []
+
+    day_start = datetime.combine(parsed_date, datetime.min.time())
+    day_end = day_start + timedelta(days=1)
 
     holiday = (
-        await db.execute(select(Holiday).where(Holiday.doctorId == doctor.id, Holiday.date == parsed_date))
+        await db.execute(
+            select(Holiday).where(Holiday.doctorId == doctor.id, Holiday.date >= day_start, Holiday.date < day_end)
+        )
     ).scalar_one_or_none()
     if holiday:
+        logger.info("availability: date=%s doctorId=%s is a holiday, no slots", local_date, doctor.id)
         return []
 
     weekday = (parsed_date.weekday() + 1) % 7  # Python Monday=0 → JS-style Sunday=0
@@ -41,18 +57,28 @@ async def get_available_slots(db: AsyncSession, local_date: str, service_id: str
         )
     ).scalar_one_or_none()
     service = await db.get(Service, service_id)
-    if not rule or not service or not rule.active:
+    if not rule or not rule.active:
+        logger.info(
+            "availability: date=%s doctorId=%s weekday=%s no active schedule rule found", local_date, doctor.id, weekday
+        )
+        return []
+    if not service:
+        logger.warning("availability: serviceId=%s not found", service_id)
         return []
 
     blocked = (
-        await db.execute(select(BlockedSlot).where(BlockedSlot.doctorId == doctor.id, BlockedSlot.date == parsed_date))
+        await db.execute(
+            select(BlockedSlot).where(
+                BlockedSlot.doctorId == doctor.id, BlockedSlot.date >= day_start, BlockedSlot.date < day_end
+            )
+        )
     ).scalars().all()
     booked = (
         await db.execute(
             select(Appointment.localTime).where(
                 Appointment.doctorId == doctor.userId,
                 Appointment.localDate == local_date,
-                Appointment.status.notin_([AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW]),
+                Appointment.status.notin_(NON_BLOCKING_STATUSES),
             )
         )
     ).scalars().all()
@@ -74,4 +100,15 @@ async def get_available_slots(db: AsyncSession, local_date: str, service_id: str
         if not in_break and time_str not in blocked_times and time_str not in booked_times:
             result.append(time_str)
         cursor += rule.slotMinutes
+
+    logger.info(
+        "availability: date=%s doctorId=%s serviceId=%s blocked=%s booked=%s available=%s",
+        local_date,
+        doctor.id,
+        service_id,
+        sorted(blocked_times),
+        sorted(booked_times),
+        result,
+    )
     return result
+

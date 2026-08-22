@@ -23,6 +23,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import get_settings
 from app.core.security import hash_password
 from app.db.database import Base
+from app.models.availability import AvailabilityRule
 from app.models.enums import Role
 from app.models.user import DoctorProfile, PatientProfile, User
 from app.utils.ids import new_id
@@ -91,6 +92,7 @@ def clear_all_tables(session) -> None:
 def seed_users(session) -> None:
     print("🌱  Creating seed users …")
     pw_hash = hash_password(PASSWORD)
+    doctor_profile_id = None
 
     for data in SEED_USERS:
         user_id = new_id()
@@ -109,9 +111,10 @@ def seed_users(session) -> None:
             session.add(PatientProfile(id=new_id(), userId=user_id))
 
         elif data["role"] == Role.DOCTOR:
+            doctor_profile_id = new_id()
             session.add(
                 DoctorProfile(
-                    id=new_id(),
+                    id=doctor_profile_id,
                     userId=user_id,
                     displayName=data["name"],
                     qualification="MBBS, MD",
@@ -128,6 +131,9 @@ def seed_users(session) -> None:
             )
 
     session.commit()
+
+    if doctor_profile_id:
+        seed_availability(session, doctor_profile_id)
     print()
     print("┌─────────────────────────────────────────────────────────────┐")
     print("│                   ✅  Seed Complete                         │")
@@ -139,6 +145,26 @@ def seed_users(session) -> None:
         email_str = data["email"].ljust(28)
         print(f"│ {role_str} │ {email_str} │ {PASSWORD}     │")
     print("└──────────┴─────────────────────────────┴───────────────────┘")
+
+
+def seed_availability(session, doctor_profile_id: str) -> None:
+    """Default Mon–Sat 09:00-17:00 schedule (JS weekday convention: Sun=0..Sat=6)."""
+    print("🗓️  Creating default availability schedule (Mon–Sat, 09:00–17:00) …")
+    for weekday in range(1, 7):  # Monday..Saturday
+        session.add(
+            AvailabilityRule(
+                id=new_id(),
+                doctorId=doctor_profile_id,
+                weekday=weekday,
+                startTime="09:00",
+                endTime="17:00",
+                breakStart="13:00",
+                breakEnd="14:00",
+                slotMinutes=30,
+                active=True,
+            )
+        )
+    session.commit()
 
 
 if __name__ == "__main__":
