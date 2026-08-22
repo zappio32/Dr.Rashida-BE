@@ -86,11 +86,13 @@ async def get_available_slots(db: AsyncSession, local_date: str, service_id: str
     blocked_times = {item.time for item in blocked}
     booked_times = set(booked)
 
+    generated: list[str] = []
     result: list[str] = []
     cursor = _minutes(rule.startTime)
     end_minutes = _minutes(rule.endTime)
     while cursor + service.durationMin <= end_minutes:
         time_str = _clock(cursor)
+        generated.append(time_str)
         in_break = (
             rule.breakStart is not None
             and rule.breakEnd is not None
@@ -102,13 +104,18 @@ async def get_available_slots(db: AsyncSession, local_date: str, service_id: str
         cursor += rule.slotMinutes
 
     logger.info(
-        "availability: date=%s doctorId=%s serviceId=%s blocked=%s booked=%s available=%s",
+        "availability: date=%s doctorId=%s serviceId=%s schedule=%s-%s slotMinutes=%s generated=%s blocked=%s booked=%s available=%s",
         local_date,
         doctor.id,
         service_id,
+        rule.startTime,
+        rule.endTime,
+        rule.slotMinutes,
+        generated,
         sorted(blocked_times),
         sorted(booked_times),
         result,
     )
     return result
+
 
