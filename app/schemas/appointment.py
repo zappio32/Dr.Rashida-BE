@@ -25,6 +25,14 @@ class ServiceCreateRequest(BaseModel):
     active: bool = True
 
 
+class ServiceUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = Field(default=None, min_length=1)
+    durationMin: int | None = Field(default=None, gt=0)
+    fee: int | None = Field(default=None, ge=0)
+    active: bool | None = None
+
+
 class PatientSummary(BaseModel):
     name: str
     email: str

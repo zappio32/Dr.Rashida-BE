@@ -15,7 +15,13 @@ from app.schemas.appointment import (
     AppointmentUpdateRequest,
 )
 from app.schemas.auth import SessionUser
-from app.services.appointment_service import DoctorNotConfiguredError, SlotUnavailableError, create_appointment
+from app.services.appointment_service import (
+    DoctorNotConfiguredError,
+    ServiceInactiveError,
+    ServiceNotFoundError,
+    SlotUnavailableError,
+    create_appointment,
+)
 
 router = APIRouter(prefix="/api/appointments", tags=["appointments"])
 
@@ -44,6 +50,13 @@ async def book_appointment(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Sorry, this appointment slot was just booked by another patient. Please select another available time.",
+        ) from error
+    except ServiceNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected consultation service was not found.") from error
+    except ServiceInactiveError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selected consultation service is no longer available for booking.",
         ) from error
     except DoctorNotConfiguredError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to create the appointment.") from error

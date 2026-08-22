@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -11,7 +11,7 @@ from app.models.misc import AuditLog
 from app.models.notification import Notification
 from app.models.service import Service
 from app.models.user import User
-from app.schemas.appointment import AppointmentOut, ServiceCreateRequest, ServiceOut
+from app.schemas.appointment import AppointmentOut, ServiceCreateRequest, ServiceOut, ServiceUpdateRequest
 from app.schemas.auth import SessionUser
 from app.utils.ids import new_id
 
@@ -67,3 +67,59 @@ async def create_service(
     await db.commit()
     await db.refresh(service)
     return {"service": ServiceOut.model_validate(service).model_dump(mode="json")}
+
+
+@router.get("/services/{service_id}", response_model=dict)
+async def read_service(
+    service_id: str,
+    session: SessionUser = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    service = await db.get(Service, service_id)
+    if not service:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Consultation service not found.")
+    return {"service": ServiceOut.model_validate(service).model_dump(mode="json")}
+
+
+@router.patch("/services/{service_id}", response_model=dict)
+async def update_service(
+    service_id: str,
+    payload: ServiceUpdateRequest,
+    session: SessionUser = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    service = await db.get(Service, service_id)
+    if not service:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Consultation service not found.")
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(service, field, value)
+    db.add(AuditLog(id=new_id(), userId=session.userId, action="SERVICE_UPDATED", entity="Service", entityId=service.id))
+    await db.commit()
+    await db.refresh(service)
+    return {"service": ServiceOut.model_validate(service).model_dump(mode="json")}
+
+
+@router.delete("/services/{service_id}", response_model=dict)
+async def delete_service(
+    service_id: str,
+    session: SessionUser = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    service = await db.get(Service, service_id)
+    if not service:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Consultation service not found.")
+
+    in_use = (
+        await db.execute(select(func.count()).select_from(Appointment).where(Appointment.serviceId == service_id))
+    ).scalar_one()
+    if in_use:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This consultation service has existing appointments and cannot be deleted. Deactivate it instead.",
+        )
+
+    await db.delete(service)
+    db.add(AuditLog(id=new_id(), userId=session.userId, action="SERVICE_DELETED", entity="Service", entityId=service_id))
+    await db.commit()
+    return {"ok": True}

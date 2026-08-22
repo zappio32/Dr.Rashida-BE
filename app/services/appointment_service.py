@@ -27,6 +27,14 @@ class DoctorNotConfiguredError(Exception):
     pass
 
 
+class ServiceNotFoundError(Exception):
+    pass
+
+
+class ServiceInactiveError(Exception):
+    pass
+
+
 async def create_appointment(
     db: AsyncSession,
     *,
@@ -43,12 +51,14 @@ async def create_appointment(
     if not doctor_profile:
         raise DoctorNotConfiguredError()
 
-    slots = await get_available_slots(db, local_date, service_id)
-    if local_time not in slots:
-        raise SlotUnavailableError()
-
     service = await db.get(Service, service_id)
     if not service:
+        raise ServiceNotFoundError()
+    if not service.active:
+        raise ServiceInactiveError()
+
+    slots = await get_available_slots(db, local_date, service_id)
+    if local_time not in slots:
         raise SlotUnavailableError()
 
     local_naive = datetime.strptime(f"{local_date}T{local_time}:00", "%Y-%m-%dT%H:%M:%S")
