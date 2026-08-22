@@ -1,6 +1,7 @@
 import os
 import secrets
 from functools import lru_cache
+from urllib.parse import urlparse
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -51,6 +52,32 @@ class Settings(BaseSettings):
             self.AUTH_SECRET = secrets.token_urlsafe(32)
 
         return self
+
+    @property
+    def is_production(self) -> bool:
+        return self.NODE_ENV == "production"
+
+    @property
+    def is_https(self) -> bool:
+        """True when APP_URL is served over HTTPS (production deployments)."""
+        return self.APP_URL.startswith("https://")
+
+    @property
+    def cookie_samesite(self) -> str:
+        """
+        SameSite policy for the session cookie.
+
+        - If the FE and BE share the same registered domain (e.g. both *.zadcart.com)
+          we can use 'lax' — it is more compatible and works for top-level navigations.
+        - If they are truly cross-site (different domains entirely) we need 'none'
+          which also requires secure=True (HTTPS).
+        - On localhost (http) we always use 'lax' so the browser accepts the cookie.
+        """
+        if not self.is_https:
+            # localhost / HTTP dev — lax works fine
+            return "lax"
+        # Production: FE and BE on different sub-domains → need 'none'
+        return "none"
 
     @property
     def cors_origins_list(self) -> list[str]:

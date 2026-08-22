@@ -22,14 +22,15 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 def _set_session_cookie(response: Response, *, user_id: str, role: str, name: str, email: str) -> None:
     settings = get_settings()
-    is_production = settings.NODE_ENV == "production"
     token = create_session_token(user_id=user_id, role=role, name=name, email=email)
+    samesite = settings.cookie_samesite          # "none" on https, "lax" on http
+    secure = samesite == "none"                  # SameSite=none REQUIRES Secure=true
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=is_production,
-        samesite="none" if is_production else "lax",
+        secure=secure,
+        samesite=samesite,
         path="/",
         domain=settings.COOKIE_DOMAIN or None,
         max_age=SESSION_MAX_AGE_SECONDS,
