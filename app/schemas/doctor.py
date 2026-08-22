@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator
 
 
 class DoctorOut(BaseModel):
@@ -26,11 +26,25 @@ class DoctorAdminOut(DoctorOut):
     durationMinutes: int
 
 
+def _coerce_active_status(value: object) -> object:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ("active", "true", "yes", "1"):
+            return True
+        if normalized in ("inactive", "false", "no", "0"):
+            return False
+    return value
+
+
 class DoctorCreateRequest(BaseModel):
+    model_config = {"populate_by_name": True}
+
     name: str = Field(min_length=2, max_length=120)
-    email: EmailStr
-    password: str = Field(min_length=10)
-    departmentId: str | None = None
+    # Admin "Add Doctor" form does not collect login credentials — account is
+    # auto-provisioned server-side when these are omitted (see create_doctor).
+    email: EmailStr | None = None
+    password: str | None = Field(default=None, min_length=10)
+    departmentId: str | None = Field(default=None, validation_alias=AliasChoices("departmentId", "department"))
     qualification: str | None = None
     specialization: str | None = None
     experience: str | None = None
@@ -40,12 +54,22 @@ class DoctorCreateRequest(BaseModel):
     timezone: str = "Asia/Kolkata"
     onlineFee: int = Field(default=0, ge=0)
     clinicFee: int = Field(default=0, ge=0)
-    durationMinutes: int = Field(default=30, gt=0)
+    durationMinutes: int = Field(
+        default=30, gt=0, validation_alias=AliasChoices("durationMinutes", "duration", "appointmentDuration")
+    )
+    isActive: bool = Field(default=True, validation_alias=AliasChoices("isActive", "active", "status"))
+
+    @field_validator("isActive", mode="before")
+    @classmethod
+    def _validate_is_active(cls, value: object) -> object:
+        return _coerce_active_status(value)
 
 
 class DoctorUpdateRequest(BaseModel):
+    model_config = {"populate_by_name": True}
+
     name: str | None = Field(default=None, min_length=2, max_length=120)
-    departmentId: str | None = None
+    departmentId: str | None = Field(default=None, validation_alias=AliasChoices("departmentId", "department"))
     qualification: str | None = None
     specialization: str | None = None
     experience: str | None = None
@@ -55,5 +79,12 @@ class DoctorUpdateRequest(BaseModel):
     timezone: str | None = None
     onlineFee: int | None = Field(default=None, ge=0)
     clinicFee: int | None = Field(default=None, ge=0)
-    durationMinutes: int | None = Field(default=None, gt=0)
-    isActive: bool | None = None
+    durationMinutes: int | None = Field(
+        default=None, gt=0, validation_alias=AliasChoices("durationMinutes", "duration", "appointmentDuration")
+    )
+    isActive: bool | None = Field(default=None, validation_alias=AliasChoices("isActive", "active", "status"))
+
+    @field_validator("isActive", mode="before")
+    @classmethod
+    def _validate_is_active(cls, value: object) -> object:
+        return _coerce_active_status(value)
