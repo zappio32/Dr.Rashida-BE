@@ -26,7 +26,7 @@ def _clock(value: int) -> str:
 
 
 async def get_available_slots(
-    db: AsyncSession, local_date: str, service_id: str, doctor_id: str | None = None
+    db: AsyncSession, local_date: str, service_id: str | None, doctor_id: str | None = None
 ) -> list[str]:
     try:
         parsed_date = datetime.strptime(local_date, "%Y-%m-%d").date()
@@ -67,13 +67,13 @@ async def get_available_slots(
             select(AvailabilityRule).where(AvailabilityRule.doctorId == doctor.id, AvailabilityRule.weekday == weekday)
         )
     ).scalar_one_or_none()
-    service = await db.get(Service, service_id)
+    service = await db.get(Service, service_id) if service_id else None
     if not rule or not rule.active:
         logger.info(
             "availability: date=%s doctorId=%s weekday=%s no active schedule rule found", local_date, doctor.id, weekday
         )
         return []
-    if not service:
+    if service_id and not service:
         logger.warning("availability: serviceId=%s not found", service_id)
         return []
 
@@ -85,6 +85,21 @@ async def get_available_slots(
     except (TypeError, ValueError) as error:
         logger.exception("availability: invalid persisted schedule rule id=%s", rule.id)
         return []
+    if (
+        schedule_start >= schedule_end
+        or schedule_end > 24 * 60
+        or rule.slotMinutes <= 0
+        or (break_start is None) != (break_end is None)
+        or (
+            break_start is not None
+            and break_end is not None
+            and (break_start < schedule_start or break_end > schedule_end or break_start >= break_end)
+        )
+    ):
+        logger.error("availability: invalid persisted schedule values rule id=%s", rule.id)
+        return []
+
+    slot_duration = service.durationMin if service else doctor.durationMinutes
 
     blocked = (
         await db.execute(
@@ -112,17 +127,17 @@ async def get_available_slots(
     result: list[str] = []
     cursor = schedule_start
     end_minutes = schedule_end
-    while cursor + service.durationMin <= end_minutes:
+    while cursor + slot_duration <= end_minutes:
         time_str = _clock(cursor)
         generated.append(time_str)
         in_break = (
             break_start is not None
             and break_end is not None
             and cursor < break_end
-            and cursor + service.durationMin > break_start
+            and cursor + slot_duration > break_start
         )
         overlaps_booked = any(
-            cursor < booked_end and cursor + service.durationMin > booked_start
+            cursor < booked_end and cursor + slot_duration > booked_start
             for booked_start, booked_end in booked_intervals
         )
         if not in_break and time_str not in blocked_times and not overlaps_booked:

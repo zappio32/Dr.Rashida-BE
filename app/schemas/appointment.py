@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.schemas.payment_out import PaymentOut
+from app.schemas.availability import AvailabilityRuleOut
 
 
 class ServiceOut(BaseModel):
@@ -99,3 +100,4 @@ class AppointmentCreateResponse(BaseModel):
 class AvailabilityResponse(BaseModel):
     slots: list[str]
     timezone: str
+    schedule: AvailabilityRuleOut | None = None
