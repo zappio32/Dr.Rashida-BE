@@ -442,7 +442,22 @@ async def list_availability_rules(
     return {"rules": [AvailabilityRuleOut.model_validate(item).model_dump(mode="json") for item in rules]}
 
 
+@router.get("/doctors/{doctor_id}/schedule", response_model=dict)
+async def get_doctor_schedule(
+    doctor_id: str,
+    session: SessionUser = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    profile, _user = await _get_doctor_profile_or_404(db, doctor_id)
+    result = await db.execute(
+        select(AvailabilityRule).where(AvailabilityRule.doctorId == profile.id).order_by(AvailabilityRule.weekday.asc())
+    )
+    rules = [AvailabilityRuleOut.model_validate(item).model_dump(mode="json") for item in result.scalars().all()]
+    return {"schedule": rules, "rules": rules}
+
+
 @router.post("/doctors/{doctor_id}/availability-rules", response_model=dict, status_code=201)
+@router.put("/doctors/{doctor_id}/schedule", response_model=dict)
 async def upsert_availability_rule(
     doctor_id: str,
     payload: AvailabilityRuleUpsertRequest,
@@ -474,7 +489,8 @@ async def upsert_availability_rule(
     db.add(AuditLog(id=new_id(), userId=session.userId, action=action, entity="AvailabilityRule", entityId=rule.id))
     await db.commit()
     await db.refresh(rule)
-    return {"rule": AvailabilityRuleOut.model_validate(rule).model_dump(mode="json")}
+    serialized_rule = AvailabilityRuleOut.model_validate(rule).model_dump(mode="json")
+    return {"rule": serialized_rule, "schedule": [serialized_rule]}
 
 
 @router.patch("/doctors/{doctor_id}/availability-rules/{rule_id}", response_model=dict)
