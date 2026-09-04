@@ -20,6 +20,8 @@ from app.services.appointment_service import (
     DoctorInactiveError,
     DoctorNotConfiguredError,
     DoctorNotFoundError,
+    InvalidAppointmentDateError,
+    InvalidAppointmentTimeError,
     ServiceInactiveError,
     ServiceNotFoundError,
     SlotUnavailableError,
@@ -71,6 +73,10 @@ async def book_appointment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Selected consultation service is no longer available for booking.",
         ) from error
+    except InvalidAppointmentDateError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected date is invalid.") from error
+    except InvalidAppointmentTimeError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected time is invalid.") from error
     except DoctorNotConfiguredError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to create the appointment.") from error
     except Exception as error:  # noqa: BLE001

@@ -2,6 +2,7 @@ import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -449,9 +450,6 @@ async def upsert_availability_rule(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     profile, _user = await _get_doctor_profile_or_404(db, doctor_id)
-    if _minutes(payload.startTime) >= _minutes(payload.endTime):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Start time must be before end time.")
-
     existing = (
         await db.execute(
             select(AvailabilityRule).where(AvailabilityRule.doctorId == profile.id, AvailabilityRule.weekday == payload.weekday)
@@ -468,7 +466,11 @@ async def upsert_availability_rule(
         db.add(rule)
         action = "AVAILABILITY_RULE_CREATED"
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as error:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This day already has a schedule configuration.") from error
     db.add(AuditLog(id=new_id(), userId=session.userId, action=action, entity="AvailabilityRule", entityId=rule.id))
     await db.commit()
     await db.refresh(rule)
@@ -487,9 +489,17 @@ async def update_availability_rule(
     rule = await db.get(AvailabilityRule, rule_id)
     if not rule or rule.doctorId != profile.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability rule not found.")
-    if _minutes(payload.startTime) >= _minutes(payload.endTime):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Start time must be before end time.")
-
+    duplicate = (
+        await db.execute(
+            select(AvailabilityRule).where(
+                AvailabilityRule.doctorId == profile.id,
+                AvailabilityRule.weekday == payload.weekday,
+                AvailabilityRule.id != rule_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if duplicate:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This day already has a schedule configuration.")
     for field, value in payload.model_dump().items():
         setattr(rule, field, value)
     db.add(AuditLog(id=new_id(), userId=session.userId, action="AVAILABILITY_RULE_UPDATED", entity="AvailabilityRule", entityId=rule.id))

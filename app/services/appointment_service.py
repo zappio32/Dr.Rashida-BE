@@ -47,6 +47,14 @@ class ServiceInactiveError(Exception):
     pass
 
 
+class InvalidAppointmentDateError(Exception):
+    pass
+
+
+class InvalidAppointmentTimeError(Exception):
+    pass
+
+
 async def create_appointment(
     db: AsyncSession,
     *,
@@ -84,6 +92,17 @@ async def create_appointment(
         raise ServiceNotFoundError()
     if not service.active:
         raise ServiceInactiveError()
+
+    try:
+        datetime.strptime(local_date, "%Y-%m-%d")
+    except ValueError as error:
+        raise InvalidAppointmentDateError() from error
+    try:
+        parsed_time = datetime.strptime(local_time, "%H:%M")
+    except ValueError as error:
+        raise InvalidAppointmentTimeError() from error
+    if parsed_time.strftime("%H:%M") != local_time:
+        raise InvalidAppointmentTimeError()
 
     slots = await get_available_slots(db, local_date, service_id, doctor_profile.userId)
     if local_time not in slots:
