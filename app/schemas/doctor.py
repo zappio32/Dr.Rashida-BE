@@ -42,7 +42,7 @@ class DoctorCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     email: EmailStr
     password: str = Field(min_length=10)
-    departmentId: str | None = Field(default=None, validation_alias=AliasChoices("departmentId", "department"))
+    departmentId: str = Field(min_length=1, validation_alias=AliasChoices("departmentId", "department"))
     qualification: str | None = None
     specialization: str | None = None
     experience: str | None = None
