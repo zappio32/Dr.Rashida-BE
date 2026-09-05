@@ -89,7 +89,11 @@ async def list_appointments(
     session: SessionUser = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    query = select(Appointment).options(joinedload(Appointment.service), joinedload(Appointment.patient))
+    query = select(Appointment).options(
+        joinedload(Appointment.service),
+        joinedload(Appointment.patient),
+        joinedload(Appointment.payment),
+    )
     if session.role == "PATIENT":
         patient_profile_id = select(PatientProfile.id).where(PatientProfile.userId == session.userId).scalar_subquery()
         query = query.where(or_(Appointment.patientId == session.userId, Appointment.patientId == patient_profile_id))
