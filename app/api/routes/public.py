@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.db.session import get_db
 from app.models.appointment import Appointment
@@ -51,7 +52,7 @@ async def read_doctors(departmentId: str | None = Query(default=None), db: Async
         .where(User.isActive.is_(True))
     )
     if departmentId:
-        query = query.where(DoctorProfile.departmentId == departmentId)
+        query = query.where(DoctorProfile.departmentId == departmentId, Department.active.is_(True))
     result = await db.execute(query.order_by(User.name.asc()))
     rows = result.all()
     doctors = [
@@ -75,7 +76,11 @@ async def read_doctors(departmentId: str | None = Query(default=None), db: Async
 
 @router.get("/appointments/{booking_id}", response_model=dict)
 async def read_appointment_by_booking_id(booking_id: str, db: AsyncSession = Depends(get_db)) -> dict:
-    result = await db.execute(select(Appointment).where(Appointment.bookingId == booking_id))
+    result = await db.execute(
+        select(Appointment)
+        .options(joinedload(Appointment.service), joinedload(Appointment.patient), joinedload(Appointment.payment))
+        .where(Appointment.bookingId == booking_id)
+    )
     appointment = result.scalar_one_or_none()
     if not appointment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found.")

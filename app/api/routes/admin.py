@@ -1,5 +1,3 @@
-import secrets
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -283,16 +281,10 @@ async def create_doctor(
         if not department:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected department was not found.")
 
-    temporary_password: str | None = None
-    if payload.email:
-        email = payload.email.lower()
-        existing = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
-        if existing:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A doctor with that email already exists.")
-    else:
-        # Admin "Add Doctor" form has no email/password fields — provision a
-        # placeholder login that can be updated later via the doctor update API.
-        email = f"doctor.{new_id().lower()}@drrashida.local"
+    email = payload.email.lower()
+    existing = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A doctor with that email already exists.")
 
     duplicate_name = (
         await db.execute(
@@ -304,20 +296,13 @@ async def create_doctor(
     if duplicate_name:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Doctor already exists.")
 
-    if payload.password:
-        password_hash = hash_password(payload.password)
-    else:
-        temporary_password = secrets.token_urlsafe(9)
-        password_hash = hash_password(temporary_password)
-
     user = User(
         id=new_id(),
         name=payload.name,
         email=email,
-        passwordHash=password_hash,
+        passwordHash=hash_password(payload.password),
         role=Role.DOCTOR,
         isActive=payload.isActive,
-        forcePasswordChange=temporary_password is not None,
     )
     db.add(user)
     await db.flush()
@@ -345,10 +330,7 @@ async def create_doctor(
     await db.refresh(profile)
     await db.refresh(user)
 
-    response = {"doctor": _doctor_admin_out(profile, user, department.name if department else None)}
-    if temporary_password:
-        response["temporaryPassword"] = temporary_password
-    return response
+    return {"doctor": _doctor_admin_out(profile, user, department.name if department else None)}
 
 
 

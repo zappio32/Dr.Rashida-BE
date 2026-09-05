@@ -40,10 +40,8 @@ class DoctorCreateRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
     name: str = Field(min_length=2, max_length=120)
-    # Admin "Add Doctor" form does not collect login credentials — account is
-    # auto-provisioned server-side when these are omitted (see create_doctor).
-    email: EmailStr | None = None
-    password: str | None = Field(default=None, min_length=10)
+    email: EmailStr
+    password: str = Field(min_length=10)
     departmentId: str | None = Field(default=None, validation_alias=AliasChoices("departmentId", "department"))
     qualification: str | None = None
     specialization: str | None = None

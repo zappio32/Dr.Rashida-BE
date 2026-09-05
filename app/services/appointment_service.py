@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.appointment import Appointment, AppointmentStatusHistory
+from app.models.department import Department
 from app.models.enums import AppointmentStatus, NotificationChannel, PaymentStatus
 from app.models.notification import Notification, ReminderJob
 from app.models.misc import AuditLog
@@ -156,9 +157,14 @@ async def create_appointment(
                 )
             )
 
+        patient = await db.get(User, patient_id)
+        department = await db.get(Department, appointment.departmentId) if appointment.departmentId else None
         body = (
-            f"New appointment booked\nPatient booking: {appointment.bookingId}\n"
-            f"Date: {local_date}\nTime: {local_time}\nService: {service.name}"
+            f"New appointment booked\nPatient: {patient.name if patient else 'Patient'}\n"
+            f"Booking ID: {appointment.bookingId}\n"
+            f"Department: {department.name if department else 'N/A'}\n"
+            f"Date: {local_date}\nTime: {local_time}\n"
+            f"Consultation Type: {consultation_type}\nService: {service.name}"
         )
         db.add(
             Notification(
