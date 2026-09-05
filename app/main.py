@@ -32,6 +32,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     # Keep FastAPI's default `detail` shape (loc/msg/type) so existing clients keep working,
     # and add a flattened `errors` list with field name + readable message for easier display.
     raw_errors = jsonable_encoder(exc.errors())
+    for error in raw_errors:
+        error.pop("input", None)
     errors = [
         {"field": ".".join(str(part) for part in err["loc"] if part != "body"), "message": err["msg"], "type": err["type"]}
         for err in raw_errors
