@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.appointment import Appointment
@@ -39,7 +39,10 @@ async def get_available_slots(
             await db.execute(
                 select(DoctorProfile)
                 .join(User, User.id == DoctorProfile.userId)
-                .where(DoctorProfile.userId == doctor_id, User.isActive.is_(True))
+                .where(
+                    or_(DoctorProfile.userId == doctor_id, DoctorProfile.id == doctor_id),
+                    User.isActive.is_(True),
+                )
             )
         ).scalar_one_or_none()
     else:

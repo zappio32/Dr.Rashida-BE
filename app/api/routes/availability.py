@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -35,7 +35,7 @@ async def read_availability(
             .join(DoctorProfile, DoctorProfile.id == AvailabilityRule.doctorId)
             .join(User, User.id == DoctorProfile.userId)
             .where(
-                DoctorProfile.userId == doctorId,
+                or_(DoctorProfile.userId == doctorId, DoctorProfile.id == doctorId),
                 User.isActive.is_(True),
                 AvailabilityRule.weekday == (parsed_date.weekday() + 1) % 7,
             )
