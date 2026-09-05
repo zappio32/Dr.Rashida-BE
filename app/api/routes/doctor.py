@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import require_role
@@ -7,6 +7,7 @@ from app.db.session import get_db
 from app.models.appointment import Appointment, AppointmentStatusHistory
 from app.models.enums import AppointmentStatus, NotificationStatus
 from app.models.notification import ReminderJob
+from app.models.user import DoctorProfile
 from app.schemas.appointment import AppointmentOut, DoctorStatusUpdateRequest
 from app.schemas.auth import SessionUser
 
@@ -20,7 +21,13 @@ async def update_appointment_status(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     result = await db.execute(
-        select(Appointment).where(Appointment.id == payload.appointmentId, Appointment.doctorId == session.userId)
+        select(Appointment).where(
+            Appointment.id == payload.appointmentId,
+            or_(
+                Appointment.doctorId == session.userId,
+                Appointment.doctorId == select(DoctorProfile.id).where(DoctorProfile.userId == session.userId).scalar_subquery(),
+            ),
+        )
     )
     appointment = result.scalar_one_or_none()
     if not appointment:

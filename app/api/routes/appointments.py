@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.models.appointment import Appointment, AppointmentStatusHistory
 from app.models.enums import AppointmentStatus, NotificationStatus
 from app.models.notification import ReminderJob
+from app.models.user import DoctorProfile, PatientProfile
 from app.schemas.appointment import (
     AppointmentCreateRequest,
     AppointmentCreateResponse,
@@ -90,9 +91,11 @@ async def list_appointments(
 ) -> dict:
     query = select(Appointment).options(joinedload(Appointment.service), joinedload(Appointment.patient))
     if session.role == "PATIENT":
-        query = query.where(Appointment.patientId == session.userId)
+        patient_profile_id = select(PatientProfile.id).where(PatientProfile.userId == session.userId).scalar_subquery()
+        query = query.where(or_(Appointment.patientId == session.userId, Appointment.patientId == patient_profile_id))
     elif session.role == "DOCTOR":
-        query = query.where(Appointment.doctorId == session.userId)
+        doctor_profile_id = select(DoctorProfile.id).where(DoctorProfile.userId == session.userId).scalar_subquery()
+        query = query.where(or_(Appointment.doctorId == session.userId, Appointment.doctorId == doctor_profile_id))
     query = query.order_by(Appointment.startsAt.desc())
     result = await db.execute(query)
     appointments = result.unique().scalars().all()
@@ -109,9 +112,17 @@ async def update_appointment(
     appointment = await db.get(Appointment, appointment_id)
     if not appointment:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to access this information.")
-    if (session.role == "PATIENT" and appointment.patientId != session.userId) or (
-        session.role == "DOCTOR" and appointment.doctorId != session.userId
-    ):
+    if session.role == "PATIENT":
+        profile = await db.execute(select(PatientProfile.id).where(PatientProfile.userId == session.userId))
+        owned_ids = {session.userId, *profile.scalars().all()}
+        if appointment.patientId not in owned_ids:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to access this information.")
+    elif session.role == "DOCTOR":
+        profile = await db.execute(select(DoctorProfile.id).where(DoctorProfile.userId == session.userId))
+        owned_ids = {session.userId, *profile.scalars().all()}
+        if appointment.doctorId not in owned_ids:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to access this information.")
+    elif session.role != "ADMIN":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to access this information.")
 
     try:
